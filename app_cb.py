@@ -676,22 +676,37 @@ async def on_message(msg: cl.Message):
                 answer = content
 
         elif finish_reason == "tool_calls":
-            # MCP tools with require_approval: "never" are auto-executed by LiteLLM.
-            # finish_reason == "tool_calls" means LiteLLM did NOT auto-execute
-            # (should not normally happen). Surface the result anyway.
-            log.debug("   on_message() | BRANCH → TOOL_CALLS (unexpected for MCP auto-exec)")
             history.append(assistant_msg)
             tool_calls = assistant_msg.get("tool_calls", [])
+            log.debug("   on_message() | BRANCH → TOOL_CALLS | count=%d", len(tool_calls))
 
             for tool_call in tool_calls:
                 tool_name = tool_call["function"]["name"]
                 tool_args = json.loads(tool_call["function"]["arguments"])
-                log.debug("   on_message() | tool_call | name=%s  args=%s",
-                          tool_name, json.dumps(tool_args))
-                answer = (
-                    f"⚙️ **{tool_name}** called with:\n"
-                    f"```json\n{json.dumps(tool_args, indent=2)}\n```"
-                )
+                log.debug("   on_message() | tool_call | name=%s  args_keys=%s",
+                          tool_name, list(tool_args.keys()))
+
+                if tool_name == "request_form_input":
+                    # ── MCP form path (via tool_call) ─────────────────────────
+                    # The LLM called request_form_input as a function tool instead
+                    # of embedding the JSON in its response content.  Both paths
+                    # carry identical data — the args ARE the form-request object.
+                    log.debug("   on_message() | BRANCH → MCP FORM (via tool_call) | tool=%r",
+                              tool_args.get("tool"))
+                    answer = await handle_form_request(tool_args, history, all_tools)
+
+                else:
+                    # ── Genuine MCP tool call ─────────────────────────────────
+                    # With require_approval: "never" LiteLLM auto-executes MCP tools
+                    # before returning to us — so reaching here means the gateway
+                    # did not auto-execute (e.g. tool not found in MCP server).
+                    # Surface the call details so the user isn't left with silence.
+                    log.debug("   on_message() | BRANCH → MCP TOOL (not auto-executed) | name=%s",
+                              tool_name)
+                    answer = (
+                        f"⚙️ **{tool_name}** was invoked but not auto-executed by the gateway.\n\n"
+                        f"Arguments:\n```json\n{json.dumps(tool_args, indent=2)}\n```"
+                    )
 
         elif finish_reason == "length":
             log.debug("   on_message() | BRANCH → LENGTH (response truncated)")
