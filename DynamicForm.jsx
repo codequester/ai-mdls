@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { sendResponse } from "@chainlit/sdk";
+
+// Chainlit injects submitElement(data) and cancelElement() as globals
+// into the browser context for custom elements — do NOT import from @chainlit/sdk
+// (that is an npm package and cannot be resolved at runtime in public/elements/).
 
 /**
  * DynamicForm.jsx
@@ -92,11 +95,13 @@ export default function DynamicForm({
             return;
         }
         setSubmitting(true);
-        sendResponse({ ...values, tool, server_name, submitted: true });
+        // submitElement is injected by Chainlit's frontend runtime
+        submitElement({ ...values, tool, server_name, submitted: true });
     };
 
     const handleCancel = () => {
-        sendResponse({ cancelled: true, tool, server_name });
+        // cancelElement is injected by Chainlit's frontend runtime
+        cancelElement();
     };
 
     // ── Field renderers ──────────────────────────────────────────────────────
