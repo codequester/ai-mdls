@@ -543,8 +543,10 @@ async def handle_form_request(form_request: dict, history: list, all_tools: list
     ).send()
 
     if not form_response or form_response.get("cancelled"):
-        log.debug("   handle_form_request() | form was cancelled or timed out")
-        return "Action cancelled."
+        # cancelElement() resolves with None; submitElement with cancelled:true also handled
+        log.debug("   handle_form_request() | form was cancelled or timed out | response=%r",
+                  form_response)
+        return "Action cancelled. Let me know if you'd like to try again."
 
     log.debug("   handle_form_request() | form submitted | raw response: %s", form_response)
 
