@@ -3,8 +3,13 @@ AI Chatbot - Chainlit Application
 ----------------------------------
 Intelligent assistant that routes queries to:
   1. Direct LLM answer  (general knowledge / creative)
-  2. RAG knowledge base (internal org docs — LLM decides via tool call)
+  2. RAG knowledge base (internal org docs — LLM signals intent via JSON)
   3. MCP platform tools (automation — LLM decides via tool call)
+
+RAG routing: The LLM returns a structured JSON action block (not a function tool
+call) to signal it wants a knowledge base search. This avoids a conflict where
+LiteLLM's MCP auto-execution (require_approval: never) would attempt to run
+search_knowledge_base as an MCP tool and fail.
 
 If an MCP tool call has missing parameters, a DynamicForm JSX element
 is rendered to collect them from the user before execution.
@@ -39,7 +44,7 @@ organizational information, and infrastructure automation tasks.
 You have access to the following capabilities:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CAPABILITY 1: KNOWLEDGE BASE SEARCH  (search_knowledge_base tool)
+CAPABILITY 1: KNOWLEDGE BASE SEARCH
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 USE when the user asks about:
   - Company policies, HR, compliance, security standards
@@ -50,6 +55,14 @@ DO NOT USE when:
   - The query is general/factual knowledge (math, science, public tech docs)
   - The intent is to execute an action (create, provision, deploy)
   - The question is creative (writing, summarization)
+
+TO TRIGGER A KNOWLEDGE BASE SEARCH, respond with ONLY this JSON
+(no markdown fences, no surrounding text, just the raw JSON object):
+
+{
+  "action": "search_knowledge_base",
+  "query": "<concise, optimised search query>"
+}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CAPABILITY 2: PLATFORM AUTOMATION  (MCP tools)
@@ -103,44 +116,24 @@ STEP 2: Is the intent to CREATE, PROVISION, DEPLOY, or AUTOMATE?
         No tool matches   → Go to STEP 3
 
 STEP 3: Does this require internal/organizational knowledge?
-  YES → Call search_knowledge_base
+  YES → Return the search_knowledge_base JSON signal (see CAPABILITY 1)
   NO  → Answer directly from training knowledge
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 BEHAVIOUR RULES:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. NEVER use search_knowledge_base AND an MCP tool in the same response.
+1. NEVER emit both a search_knowledge_base JSON and an MCP tool call in the same response.
 2. NEVER guess or hallucinate parameter values for MCP tools.
-3. When using RAG results, always cite the source document name.
-4. If RAG returns no results, say so clearly then answer from training knowledge.
+3. When knowledge base context is injected into the conversation, always cite the source document.
+4. If the knowledge base returns no relevant results, say so clearly then answer from training data.
 5. For MCP actions with real-world side-effects (PRs, provisioning), state
    what you are about to do before calling the tool.
-6. Only use tools that are explicitly listed in your available tools.
+6. Only use MCP tools that are explicitly listed in your available tools.
 """
 
-# ─── RAG Tool Definition (function-type, handled by Chainlit) ─────────────────
-RAG_TOOL_DEFINITION = {
-    "type": "function",
-    "function": {
-        "name": "search_knowledge_base",
-        "description": (
-            "Search the internal organization knowledge base for company-specific "
-            "information: policies, procedures, naming conventions, architecture "
-            "standards, runbooks, and internal documentation. Use when the user "
-            "asks about anything specific to the organization."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Optimized search query to retrieve relevant documents"
-                }
-            },
-            "required": ["query"]
-        }
-    }
-}
+# NOTE: search_knowledge_base is NOT defined as a function tool.
+# The LLM signals RAG intent via a JSON action block in its response content.
+# This prevents LiteLLM (require_approval: never) from auto-executing it as MCP.
 
 
 # ─── HTTP Helpers ─────────────────────────────────────────────────────────────
@@ -242,18 +235,26 @@ async def call_rag_query(query: str, include_sources: bool = True) -> dict:
 
 
 # ─── Helper Functions ─────────────────────────────────────────────────────────
-def try_parse_form_request(content: str) -> dict | None:
+# Known action values the LLM may signal via JSON response content
+_KNOWN_ACTIONS = {"search_knowledge_base", "request_form_input"}
+
+
+def try_parse_intent_signal(content: str) -> dict | None:
     """
-    Check if the LLM's response is a form input request JSON.
+    Check if the LLM's response is an intent-signal JSON.
+    Handles two known action types:
+      - "search_knowledge_base" : LLM wants a RAG search
+      - "request_form_input"    : LLM needs MCP params from the user
     Returns the parsed dict if valid, None otherwise.
     """
-    if not content or "request_form_input" not in content:
+    if not content or '"action"' not in content:
         return None
     try:
-        match = re.search(r'\{.*"action"\s*:\s*"request_form_input".*\}', content, re.DOTALL)
+        # Extract the outermost JSON object from the content
+        match = re.search(r'\{[^{}]*"action"\s*:[^{}]*\}', content, re.DOTALL)
         if match:
             parsed = json.loads(match.group())
-            if parsed.get("action") == "request_form_input":
+            if parsed.get("action") in _KNOWN_ACTIONS:
                 return parsed
     except (json.JSONDecodeError, AttributeError):
         pass
@@ -286,16 +287,18 @@ def format_rag_context(rag_data: dict) -> str:
 
 
 # ─── Tool Call Handlers ───────────────────────────────────────────────────────
-async def handle_rag_tool_call(tool_call: dict, history: list) -> str:
+async def handle_rag_signal(signal: dict, history: list, all_tools: list) -> str:
     """
-    Execute search_knowledge_base tool call:
+    Handle a search_knowledge_base intent signal from the LLM.
+    The LLM returned a JSON action block (not a function tool call), so there
+    is no tool_call_id. RAG context is injected as a system message instead.
+
       1. Call /v1/rag/query with the LLM's search query
-      2. Add RAG context to history as tool result
-      3. Make a second /v1/chat/completions call (no tools) to synthesize the answer
+      2. Inject retrieved context into history as a system message
+      3. Make a second /v1/chat/completions call to synthesize the final answer
     Returns the final answer string.
     """
-    args = json.loads(tool_call["function"]["arguments"])
-    query = args.get("query", "")
+    query = signal.get("query", "")
 
     async with cl.Step(name="Searching knowledge base", type="tool") as step:
         step.input = query
@@ -305,15 +308,15 @@ async def handle_rag_tool_call(tool_call: dict, history: list) -> str:
 
     context = format_rag_context(rag_data)
 
-    # Add RAG result as tool message
+    # Inject RAG context as a system message (no tool_call_id needed)
     history.append({
-        "role": "tool",
-        "tool_call_id": tool_call["id"],
-        "content": context,
+        "role": "system",
+        "content": f"[Knowledge Base Context — use this to answer the user's question]\n{context}",
     })
 
-    # Second LLM call — synthesize answer from context (no tools this time)
-    final_resp = await call_llm(messages=history, tools=None)
+    # Second LLM call — synthesize answer from injected context
+    # Pass all_tools so MCP tools remain available for follow-up turns
+    final_resp = await call_llm(messages=history, tools=all_tools)
     return final_resp["choices"][0]["message"]["content"]
 
 
@@ -374,8 +377,9 @@ async def on_chat_start():
     mcp_servers = await fetch_mcp_servers()
     mcp_tool_entries = build_mcp_tool_entries(mcp_servers)
 
-    # Combined tools: RAG function tool + MCP server tool entries
-    all_tools = [RAG_TOOL_DEFINITION] + mcp_tool_entries
+    # MCP tools only — search_knowledge_base is handled via intent-signal JSON,
+    # NOT as a function tool, to avoid LiteLLM auto-execution conflict.
+    all_tools = mcp_tool_entries
 
     cl.user_session.set("message_history", [{"role": "system", "content": SYSTEM_PROMPT}])
     cl.user_session.set("all_tools", all_tools)
@@ -404,11 +408,12 @@ async def on_message(msg: cl.Message):
 
     Flow:
       1. Append user message to history
-      2. Call LLM with all tools (RAG + MCP)
-      3. Route based on finish_reason:
-         - stop + form_request JSON → show DynamicForm, re-call LLM
-         - stop + plain text        → display answer
-         - tool_calls               → execute tool (RAG or MCP)
+      2. Call LLM with MCP tools only
+      3. Route based on finish_reason + content:
+         - stop + search_knowledge_base JSON → call RAG, second LLM call
+         - stop + request_form_input JSON    → show DynamicForm, re-call LLM
+         - stop + plain text                 → display answer directly
+         - tool_calls                        → MCP auto-executed by LiteLLM
       4. Append assistant answer to history and persist
     """
     history: list = cl.user_session.get("message_history")
@@ -428,37 +433,39 @@ async def on_message(msg: cl.Message):
         # ── Route on finish_reason ────────────────────────────────────────────
         if finish_reason == "stop":
             content = assistant_msg.get("content", "")
-            form_request = try_parse_form_request(content)
+            signal = try_parse_intent_signal(content)
 
-            if form_request:
-                # LLM signalled it needs form input for an MCP tool
+            if signal and signal.get("action") == "search_knowledge_base":
+                # ── RAG path ──────────────────────────────────────────────────
+                # LLM returned a JSON signal requesting a knowledge base search.
+                # Do NOT add the raw JSON to visible history — replace it with
+                # the synthesized answer after RAG completes.
+                answer = await handle_rag_signal(signal, history, all_tools)
+
+            elif signal and signal.get("action") == "request_form_input":
+                # ── MCP form path ─────────────────────────────────────────────
+                # LLM signalled it needs missing MCP parameters from the user.
                 history.append({"role": "assistant", "content": content})
-                answer = await handle_form_request(form_request, history, all_tools)
+                answer = await handle_form_request(signal, history, all_tools)
+
             else:
-                # Plain direct answer
+                # ── Direct answer ─────────────────────────────────────────────
                 answer = content
 
         elif finish_reason == "tool_calls":
-            # Add the assistant's tool call message to history before handling
+            # MCP tools with require_approval: "never" are auto-executed by LiteLLM.
+            # finish_reason == "tool_calls" means LiteLLM did NOT auto-execute
+            # (should not normally happen with never). Surface the result anyway.
             history.append(assistant_msg)
             tool_calls = assistant_msg.get("tool_calls", [])
 
             for tool_call in tool_calls:
                 tool_name = tool_call["function"]["name"]
-
-                if tool_name == "search_knowledge_base":
-                    # ── RAG path ──────────────────────────────────────────────
-                    answer = await handle_rag_tool_call(tool_call, history)
-
-                else:
-                    # ── MCP path ──────────────────────────────────────────────
-                    # With require_approval: "never", LiteLLM auto-executes MCP tools.
-                    # If finish_reason is still tool_calls here, surface the tool args.
-                    tool_args = json.loads(tool_call["function"]["arguments"])
-                    answer = (
-                        f"⚙️ **{tool_name}** executed with:\n"
-                        f"```json\n{json.dumps(tool_args, indent=2)}\n```"
-                    )
+                tool_args = json.loads(tool_call["function"]["arguments"])
+                answer = (
+                    f"⚙️ **{tool_name}** called with:\n"
+                    f"```json\n{json.dumps(tool_args, indent=2)}\n```"
+                )
 
         elif finish_reason == "length":
             answer = (
