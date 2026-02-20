@@ -60,7 +60,7 @@ AI_GATEWAY_URL              = os.getenv("AI_GATEWAY_URL", "").rstrip("/")
 AI_API_KEY                  = os.getenv("AI_API_KEY", "")
 AI_GATEWAY_SSL_VERIFY       = os.getenv("AI_GATEWAY_SSL_VERIFY", "true").lower() != "false"
 AI_MODEL_TEMPERATURE        = float(os.getenv("AI_MODEL_TEMPERATURE", "0.7"))
-AI_MODEL_MAX_TOKENS         = int(os.getenv("AI_MODEL_MAX_TOKENS", "1024"))
+AI_MODEL_MAX_TOKENS         = int(os.getenv("AI_MODEL_MAX_TOKENS", "4096"))
 AI_MODEL_CHAT_STREAMS       = os.getenv("AI_MODEL_CHAT_STREAMS", "false").lower() == "true"
 AI_MODEL_RAG_TOP_K          = int(os.getenv("AI_MODEL_RAG_TOP_K", "5"))
 AI_MODEL_RAG_SIMILARITY_THRESHOLD = float(os.getenv("AI_MODEL_RAG_SIMILARITY_THRESHOLD", "0.7"))
@@ -709,11 +709,30 @@ async def on_message(msg: cl.Message):
                     )
 
         elif finish_reason == "length":
-            log.debug("   on_message() | BRANCH → LENGTH (response truncated)")
-            answer = (
-                (assistant_msg.get("content") or "") +
-                "\n\n*⚠️ Response was truncated. Try asking a more specific question.*"
+            partial_content = assistant_msg.get("content") or ""
+            log.warning(
+                "   on_message() | BRANCH → LENGTH | partial_content_length=%d  "
+                "Hint: increase AI_MODEL_MAX_TOKENS in .env (currently %d)",
+                len(partial_content), AI_MODEL_MAX_TOKENS,
             )
+
+            # Try to salvage a valid intent signal from the truncated content.
+            # If the JSON was mostly written before the cut, parsing may still work.
+            signal = try_parse_intent_signal(partial_content)
+            if signal and signal.get("action") == "search_knowledge_base":
+                log.debug("   on_message() | LENGTH salvage → RAG")
+                answer = await handle_rag_signal(signal, history, all_tools)
+            elif signal and signal.get("action") == "request_form_input":
+                log.debug("   on_message() | LENGTH salvage → MCP FORM")
+                history.append({"role": "assistant", "content": partial_content})
+                answer = await handle_form_request(signal, history, all_tools)
+            else:
+                log.debug("   on_message() | LENGTH salvage failed → showing truncation notice")
+                answer = (
+                    partial_content +
+                    "\n\n*⚠️ Response was truncated. If you were expecting a form or an action, "
+                    "try increasing `AI_MODEL_MAX_TOKENS` in your `.env` file.*"
+                )
 
         elif finish_reason == "content_filter":
             log.debug("   on_message() | BRANCH → CONTENT_FILTER (request blocked)")
