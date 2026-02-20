@@ -225,7 +225,7 @@ def build_mcp_tool_entries(mcp_servers: list) -> list:
             "type": "mcp",
             "server_label": "litellm",
             "require_approval": "never",
-            "server_url": f"litellm_prox/mcp/{server_name}"
+            "server_url": f"litellm_proxy/mcp/{server_name}"
         }
         entries.append(entry)
         log.debug("   build_mcp_tool_entries() | registered MCP tool entry: server_name=%s  url=%s",
@@ -287,7 +287,6 @@ async def call_rag_query(query: str, include_sources: bool = True) -> dict:
     payload = {
         "query": query,
         "top_k": AI_MODEL_RAG_TOP_K,
-        "similarity_threshold": AI_MODEL_RAG_SIMILARITY_THRESHOLD,
         "include_sources": include_sources,
         "temperature": AI_MODEL_TEMPERATURE,
         "max_tokens": AI_MODEL_MAX_TOKENS,
@@ -398,35 +397,66 @@ async def handle_rag_signal(signal: dict, history: list, all_tools: list) -> str
     is no tool_call_id. RAG context is injected as a system message instead.
 
       1. Call /v1/rag/query with the LLM's search query
-      2. Inject retrieved context into history as a system message
-      3. Make a second /v1/chat/completions call to synthesize the final answer
+      2. Inject RAG context + a synthesis instruction into history
+      3. Make a second /v1/chat/completions call with tools=None to force plain text
     Returns the final answer string.
     """
     query = signal.get("query", "")
     log.debug(">> handle_rag_signal() | query=%r  history_length=%d", query, len(history))
 
     async with cl.Step(name="Searching knowledge base", type="tool") as step:
-        step.input = query
+        step.input = f"Query: {query}"
         rag_data = await call_rag_query(query=query, include_sources=True)
         retrieved = rag_data.get("retrieved_count", len(rag_data.get("sources", [])))
-        step.output = f"Retrieved {retrieved} chunks"
+        step.output = f"Retrieved {retrieved} chunk(s) from the knowledge base"
         log.debug("   handle_rag_signal() | RAG complete | retrieved_count=%d", retrieved)
 
     context = format_rag_context(rag_data)
 
-    # Inject RAG context as a system message (no tool_call_id needed)
-    log.debug("   handle_rag_signal() | injecting RAG context as system message")
+    # Inject RAG context as a system message
+    log.debug("   handle_rag_signal() | injecting RAG context + synthesis instruction")
     history.append({
         "role": "system",
-        "content": f"[Knowledge Base Context — use this to answer the user's question]\n{context}",
+        "content": f"[Knowledge Base Context — retrieved for the user's question]\n{context}",
     })
 
-    # Second LLM call — synthesize answer from injected context
-    log.debug("   handle_rag_signal() | making second LLM call to synthesize answer")
-    final_resp = await call_llm(messages=history, tools=all_tools)
-    answer = final_resp["choices"][0]["message"]["content"]
+    # Critical: tell the LLM it already has the context and must now answer directly.
+    # Without this, the LLM re-reads its own system prompt, sees the
+    # search_knowledge_base JSON rules, and returns the same JSON signal again
+    # instead of synthesizing an answer — causing an infinite loop.
+    history.append({
+        "role": "system",
+        "content": (
+            "The knowledge base context above has already been retrieved for you. "
+            "Do NOT return a JSON action or signal. "
+            "Do NOT search again. "
+            "Answer the user's question NOW using the context provided above. "
+            "Respond in plain conversational text only."
+        ),
+    })
 
-    log.debug("<< handle_rag_signal() | answer_length=%d", len(answer))
+    # tools=None: physically prevents the LLM from making another tool call
+    # (which would return content=None and produce a blank answer on screen)
+    log.debug("   handle_rag_signal() | calling second LLM (tools=None, synthesis instruction set)")
+    final_resp = await call_llm(messages=history, tools=None)
+
+    second_choice = final_resp["choices"][0]
+    second_finish = second_choice.get("finish_reason", "unknown")
+    answer = second_choice["message"].get("content") or ""
+
+    log.debug(
+        "<< handle_rag_signal() | second_finish=%s  answer_length=%d  answer_preview=%r",
+        second_finish, len(answer), answer[:80],
+    )
+
+    if not answer:
+        log.warning("   handle_rag_signal() | empty answer from second LLM call | finish_reason=%s",
+                    second_finish)
+        answer = (
+            "I found relevant information in the knowledge base but could not synthesize "
+            "a response. Please try rephrasing your question."
+        )
+
     return answer
 
 
