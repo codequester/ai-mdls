@@ -318,40 +318,91 @@ async def call_rag_query(query: str, include_sources: bool = True) -> dict:
 _KNOWN_ACTIONS = {"search_knowledge_base", "request_form_input"}
 
 
+def _extract_json_object(text: str) -> str | None:
+    """
+    Stack-based extractor: finds the first complete JSON object in text,
+    correctly handling arbitrarily nested braces.
+    Returns the raw JSON string, or None if no complete object is found.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escape_next = False
+    for i, ch in enumerate(text[start:], start):
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == "\\" and in_string:
+            escape_next = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def try_parse_intent_signal(content: str) -> dict | None:
     """
     Check if the LLM's response is an intent-signal JSON.
     Handles two known action types:
-      - "search_knowledge_base" : LLM wants a RAG search
-      - "request_form_input"    : LLM needs MCP params from the user
-    Returns the parsed dict if valid, None otherwise.
+      - "search_knowledge_base" : LLM wants a RAG search  (flat JSON, ~55 chars)
+      - "request_form_input"    : LLM needs MCP params    (nested JSON with fields[])
+
+    Robustness:
+      - Strips markdown code fences (```json ... ```) — LLMs add them despite instructions
+      - Uses a stack-based extractor so nested braces inside "fields" don't break parsing
     """
     log.debug(">> try_parse_intent_signal() | content_length=%d", len(content) if content else 0)
 
     if not content or '"action"' not in content:
         log.debug("   try_parse_intent_signal() | no action key found → returning None")
         return None
-    try:
-        # Extract the outermost JSON object from the content
-        match = re.search(r'\{[^{}]*"action"\s*:[^{}]*\}', content, re.DOTALL)
-        if match:
-            parsed = json.loads(match.group())
-            action = parsed.get("action")
-            if action in _KNOWN_ACTIONS:
-                log.debug(
-                    "<< try_parse_intent_signal() | MATCHED action=%s  parsed=%s",
-                    action, json.dumps(parsed, indent=2),
-                )
-                return parsed
-            else:
-                log.debug(
-                    "   try_parse_intent_signal() | action=%r not in known actions %s → None",
-                    action, _KNOWN_ACTIONS,
-                )
-    except (json.JSONDecodeError, AttributeError) as e:
-        log.debug("   try_parse_intent_signal() | JSON parse failed: %s", e)
 
-    log.debug("<< try_parse_intent_signal() | no valid signal found → returning None")
+    # ── Step 1: strip markdown code fences ───────────────────────────────────
+    # LLMs often wrap JSON in ```json ... ``` even when told not to.
+    stripped = re.sub(r"```(?:json)?\s*", "", content).strip()
+    stripped = re.sub(r"```\s*$", "", stripped, flags=re.MULTILINE).strip()
+    log.debug("   try_parse_intent_signal() | after fence-strip length=%d", len(stripped))
+
+    # ── Step 2: stack-based extraction ───────────────────────────────────────
+    raw = _extract_json_object(stripped)
+    if not raw:
+        log.debug("   try_parse_intent_signal() | no JSON object found in content → None")
+        log.debug("   try_parse_intent_signal() | raw content snippet=%r", content[:200])
+        return None
+
+    log.debug("   try_parse_intent_signal() | extracted JSON length=%d  preview=%r",
+              len(raw), raw[:120])
+
+    # ── Step 3: parse and validate ───────────────────────────────────────────
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        log.debug("   try_parse_intent_signal() | JSON parse failed: %s | raw=%r", e, raw[:200])
+        return None
+
+    action = parsed.get("action")
+    if action in _KNOWN_ACTIONS:
+        log.debug(
+            "<< try_parse_intent_signal() | MATCHED action=%s  keys=%s",
+            action, list(parsed.keys()),
+        )
+        return parsed
+
+    log.debug(
+        "<< try_parse_intent_signal() | action=%r not in %s → None",
+        action, _KNOWN_ACTIONS,
+    )
     return None
 
 
