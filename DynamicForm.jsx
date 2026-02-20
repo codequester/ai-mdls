@@ -24,13 +24,15 @@ import { useState } from "react";
  *     placeholder {string}
  *     options     {string[]} - Only for type="select"
  */
-export default function DynamicForm({
-    title = "Provide Details",
-    description = "",
-    tool = "",
-    server_name = "",
-    fields = [],
-}) {
+export default function DynamicForm() {
+    // Chainlit injects a global `props` object — do NOT use function argument destructuring
+    // (the renderer does not pass props as React component args, same pattern as JiraTicket.jsx)
+    const title = props.title || "Provide Details";
+    const description = props.description || "";
+    const tool = props.tool || "";
+    const server_name = props.server_name || "";
+    const fields = props.fields || [];
+
     // Initialise values from props (pre-filled by LLM where possible)
     const initValues = {};
     fields.forEach((f) => {
