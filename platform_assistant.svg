@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Red circle background matching the brand -->
+  <circle cx="50" cy="50" r="50" fill="#CC0000"/>
+  <!-- Sparkles emoji centred -->
+  <text x="50" y="68" font-size="52" text-anchor="middle">✨</text>
+</svg>
