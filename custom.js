@@ -95,7 +95,8 @@
        No MutationObserver — comparing link.href (browser-resolved)
        against the raw data URL string never matches and causes
        an infinite loop. One-shot is sufficient.                    */
-    const FAVICON_SVG = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>";
+    //const FAVICON_SVG = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>";
+    const FAVICON_URL = "/public/avatars/platform_assistant.svg";
 
     function setFavicon() {
         document.querySelectorAll("link[rel*='icon']").forEach(function (el) { el.remove(); });
