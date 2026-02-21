@@ -46,18 +46,19 @@ export default function DynamicForm() {
 
     // ── Styles ──────────────────────────────────────────────────────────────
     const colors = {
-        bg: "#111827",
-        bgCard: "#1f2937",
-        border: "#374151",
-        borderFocus: "#3b82f6",
-        text: "#f9fafb",
-        textMuted: "#9ca3af",
-        textLabel: "#d1d5db",
-        error: "#ef4444",
-        accent: "#3b82f6",
-        accentHover: "#2563eb",
-        badgeBg: "#1e3a5f",
-        badgeText: "#60a5fa",
+        bg: "#FFFFFF",
+        bgCard: "#FFF5F5",
+        border: "#E5E7EB",
+        borderFocus: "#CC0000",
+        text: "#1A1A1A",
+        textMuted: "#6B7280",
+        textLabel: "#374151",
+        error: "#CC0000",
+        accent: "#CC0000",
+        accentHover: "#A30000",
+        accentText: "#FFFFFF",
+        badgeBg: "#FFEAEA",
+        badgeText: "#CC0000",
     };
 
     const inputBase = (hasError) => ({
@@ -205,12 +206,13 @@ export default function DynamicForm() {
         <div
             style={{
                 fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-                background: `linear-gradient(135deg, ${colors.bg} 0%, ${colors.bgCard} 100%)`,
-                borderRadius: "12px",
-                border: `1px solid ${colors.border}`,
+                background: colors.bg,
+                borderRadius: "10px",
+                border: `1.5px solid ${colors.border}`,
+                borderTop: `4px solid ${colors.accent}`,
                 padding: "24px",
                 maxWidth: "480px",
-                boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+                boxShadow: "0 4px 20px rgba(204,0,0,0.10)",
                 color: colors.text,
             }}
         >
@@ -290,12 +292,15 @@ export default function DynamicForm() {
                     style={{
                         padding: "8px 20px",
                         borderRadius: "6px",
-                        border: `1px solid ${colors.border}`,
+                        border: `1.5px solid ${colors.border}`,
                         background: "transparent",
                         color: colors.textMuted,
                         fontSize: "14px",
-                        cursor: "pointer",
+                        cursor: submitting ? "not-allowed" : "pointer",
+                        transition: "all 0.15s",
                     }}
+                    onMouseOver={(e) => { e.currentTarget.style.borderColor = colors.accent; e.currentTarget.style.color = colors.accent; }}
+                    onMouseOut={(e) => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.color = colors.textMuted; }}
                 >
                     Cancel
                 </button>
@@ -307,15 +312,16 @@ export default function DynamicForm() {
                         padding: "8px 22px",
                         borderRadius: "6px",
                         border: "none",
-                        background: submitting
-                            ? "#1e40af"
-                            : `linear-gradient(135deg, ${colors.accent}, ${colors.accentHover})`,
-                        color: "#fff",
+                        background: submitting ? "#E0E0E0" : colors.accent,
+                        color: submitting ? colors.textMuted : colors.accentText,
                         fontSize: "14px",
-                        fontWeight: "500",
+                        fontWeight: "600",
                         cursor: submitting ? "not-allowed" : "pointer",
-                        boxShadow: "0 2px 8px rgba(59,130,246,0.4)",
+                        boxShadow: submitting ? "none" : "0 2px 8px rgba(204,0,0,0.3)",
+                        transition: "all 0.15s",
                     }}
+                    onMouseOver={(e) => { if (!submitting) e.currentTarget.style.background = colors.accentHover; }}
+                    onMouseOut={(e) => { if (!submitting) e.currentTarget.style.background = colors.accent; }}
                 >
                     {submitting ? "⏳ Submitting…" : "✅ Submit"}
                 </button>
