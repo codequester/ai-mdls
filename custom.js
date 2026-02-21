@@ -1,116 +1,92 @@
 /**
- * custom.js — Platform Assistant UI Injections
+ * custom.js — Platform Assistant Header Injection
  * Loaded via .chainlit/config.toml → custom_js
  *
- * Responsibilities:
- *   1. Inject a thin yellow accent band directly below the red header
- *   2. Inject "Dummy User Name  ⏻" into the right side of the header
+ * Injects two fixed-position elements above the Chainlit UI:
+ *   1. Red header bar (48px)  — "Platform Assistant" left, "👤 Dummy User Name ⏻" right
+ *   2. Yellow accent band (6px) — immediately below the red bar
  *
- * Both are injected once the header DOM node appears (MutationObserver).
- * When logout is wired up, replace the click handler on #cl-user-banner.
+ * Uses position:fixed so it floats above the React SPA tree,
+ * independent of any Chainlit component class names.
+ * Adds padding-top to #root so the chat content doesn't hide behind it.
  */
-
 (function () {
     "use strict";
 
-    /* ── Config ──────────────────────────────────────────────── */
-    const DISPLAY_NAME = "Dummy User Name";  // ← replace with real session user later
-    const POWER_EMOJI = "⏻";
+    const RED_HEIGHT = 48;   // px — red header bar
+    const YELLOW_HEIGHT = 3;    // px — yellow accent band
+    const TOTAL_HEIGHT = RED_HEIGHT + YELLOW_HEIGHT;  // 51px
 
-    /* ── Avoid double-injection on hot-reloads ───────────────── */
-    if (document.getElementById("cl-yellow-band")) return;
+    // Avoid double-injection on hot-reloads
+    if (document.getElementById("cl-header-bar")) return;
 
-    /* ──────────────────────────────────────────────────────────
-       findHeader — try several Chainlit DOM shapes
-    ────────────────────────────────────────────────────────── */
-    function findHeader() {
-        return (
-            document.querySelector("header") ||
-            document.querySelector("[class*='header'][class*='sticky']") ||
-            document.querySelector(".sticky.top-0")
-        );
-    }
+    /* ── 1. Red header bar ─────────────────────────────────────── */
+    const header = document.createElement("div");
+    header.id = "cl-header-bar";
+    Object.assign(header.style, {
+        position: "fixed",
+        top: "0",
+        left: "0",
+        right: "0",
+        height: RED_HEIGHT + "px",
+        backgroundColor: "#CC0000",
+        color: "#FFFFFF",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 16px",
+        zIndex: "99999",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif",
+        fontSize: "14px",
+        fontWeight: "600",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+        boxSizing: "border-box",
+    });
 
-    /* ──────────────────────────────────────────────────────────
-       injectUserBanner — adds username + power icon to header right
-    ────────────────────────────────────────────────────────── */
-    function injectUserBanner(header) {
-        if (document.getElementById("cl-user-banner")) return;
+    header.innerHTML = `
+    <span style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;letter-spacing:0.2px;">
+      🖥️ Platform Assistant
+    </span>
+    <span id="cl-user-info"
+          style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;opacity:0.95;cursor:pointer;"
+          title="Logout (coming soon)">
+      👤 Dummy User Name
+      <span style="font-size:17px;margin-left:2px;" title="Logout">⏻</span>
+    </span>
+  `;
 
-        const banner = document.createElement("div");
-        banner.id = "cl-user-banner";
-        banner.title = "Logout (coming soon)";
-        banner.innerHTML = `
-      <span style="opacity:0.85;font-size:12px;">👤</span>
-      <span>${DISPLAY_NAME}</span>
-      <span style="font-size:16px;margin-left:4px;" title="Logout">${POWER_EMOJI}</span>
-    `;
+    header.querySelector("#cl-user-info").addEventListener("click", function () {
+        // TODO: wire up real logout / session clear here
+        console.log("[Platform Assistant] Logout clicked — not yet implemented.");
+    });
 
-        // Click handler — wire up real logout here later
-        banner.addEventListener("click", function () {
-            console.log("[Platform Assistant] Logout clicked — not yet wired up.");
-        });
+    /* ── 2. Yellow accent band ─────────────────────────────────── */
+    const band = document.createElement("div");
+    band.id = "cl-yellow-band";
+    Object.assign(band.style, {
+        position: "fixed",
+        top: RED_HEIGHT + "px",
+        left: "0",
+        right: "0",
+        height: YELLOW_HEIGHT + "px",
+        backgroundColor: "#FFD000",
+        zIndex: "99998",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.10)",
+    });
 
-        header.appendChild(banner);
-    }
-
-    /* ──────────────────────────────────────────────────────────
-       injectYellowBand — inserts thin yellow stripe after header
-    ────────────────────────────────────────────────────────── */
-    function injectYellowBand(header) {
-        if (document.getElementById("cl-yellow-band")) return;
-
-        const band = document.createElement("div");
-        band.id = "cl-yellow-band";
-        // Inline style as fallback — custom.css also targets #cl-yellow-band
-        band.style.cssText = [
-            "width:100%",
-            "height:6px",
-            "background-color:#FFD000",
-            "position:sticky",
-            "top:0",
-            "z-index:49",
-            "box-shadow:0 1px 3px rgba(0,0,0,0.12)",
-            "flex-shrink:0",
-        ].join(";");
-
-        // Insert immediately after the header in the DOM
-        if (header.nextSibling) {
-            header.parentNode.insertBefore(band, header.nextSibling);
-        } else {
-            header.parentNode.appendChild(band);
-        }
-    }
-
-    /* ──────────────────────────────────────────────────────────
-       inject — run both injections once the header is present
-    ────────────────────────────────────────────────────────── */
+    /* ── 3. Inject into the page ───────────────────────────────────
+     Layout offset (margin-top + height shrink) is handled entirely
+     by CSS: #root > div:first-child in custom.css.
+     JS only needs to append the two fixed bars to the body.        */
     function inject() {
-        const header = findHeader();
-        if (!header) return false;          // not ready yet
-
-        injectUserBanner(header);
-        injectYellowBand(header);
+        if (!document.body) return false;
+        document.body.appendChild(header);
+        document.body.appendChild(band);
         return true;
     }
 
-    /* ──────────────────────────────────────────────────────────
-       Wait for the Chainlit React app to render the header.
-       Chainlit is a SPA — DOM may not exist on script load.
-    ────────────────────────────────────────────────────────── */
-    if (inject()) return;   // already rendered (unlikely but possible)
-
-    const observer = new MutationObserver(function (_mutations, obs) {
-        if (inject()) {
-            obs.disconnect();   // stop watching once injected
-        }
-    });
-
-    observer.observe(document.body || document.documentElement, {
-        childList: true,
-        subtree: true,
-    });
-
-    // Safety net: stop observing after 15 s regardless
-    setTimeout(function () { observer.disconnect(); }, 15000);
+    // Try immediately (body usually exists when custom_js runs)
+    if (!inject()) {
+        document.addEventListener("DOMContentLoaded", inject);
+    }
 })();
