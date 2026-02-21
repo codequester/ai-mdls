@@ -1,197 +1,81 @@
 /* ============================================================
-   Platform Assistant — Corporate White/Red Theme
-   Loaded via .chainlit/config.toml → custom_css
+   Platform Assistant — Theme Overrides
+   Confirmed against Chainlit 2.9.4 live DOM inspection.
    ============================================================ */
 
-/* ─── Colour tokens ─────────────────────────────────────────── */
-:root {
-  --brand-red:        #CC0000;
-  --brand-red-dark:   #A30000;
-  --brand-red-light:  #FF1A1A;
-  --brand-yellow:     #FFD000;
-  --brand-white:      #FFFFFF;
-  --brand-off-white:  #F5F5F5;
-  --brand-text:       #1A1A1A;
-  --brand-text-muted: #6B7280;
-  --brand-border:     #E5E7EB;
-}
-
-/* ─── Force light / white background everywhere ─────────────── */
-html, body, #root {
-  background-color: var(--brand-white) !important;
-  color: var(--brand-text) !important;
-}
-
-/* Kill any dark-mode overrides the browser might inject */
-@media (prefers-color-scheme: dark) {
-  html, body, #root {
-    background-color: var(--brand-white) !important;
-    color: var(--brand-text) !important;
-  }
-}
-
-/* ─── Hide the light / dark / system theme switcher ─────────── */
-/* Targets the theme toggle button in Chainlit's header */
-button[aria-label*="theme" i],
-button[aria-label*="Theme" i],
-button[title*="theme" i],
-button[title*="Theme" i],
-[data-testid="theme-toggle"],
-[data-testid="ThemeToggle"] {
+/* ─── 1. Hide theme toggle ────────────────────────────────── */
+#theme-toggle {
   display: none !important;
 }
 
-/* ─── Main header / navbar — RED ────────────────────────────── */
-header,
-nav[class*="header"],
-div[class*="header"][class*="sticky"],
-.sticky.top-0 {
-  background-color: var(--brand-red) !important;
-  border-bottom: none !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) !important;
-}
-
-/* Text and icons inside the header — white */
-header *,
-.sticky.top-0 * {
-  color: var(--brand-white) !important;
-}
-
-/* SVG icons inside header */
-header svg path,
-header svg rect,
-header svg circle,
-.sticky.top-0 svg path {
-  fill: var(--brand-white) !important;
-  stroke: var(--brand-white) !important;
-}
-
-/* ─── Yellow accent band (injected by custom.js) ────────────── */
-#cl-yellow-band {
-  position: sticky;
-  top: 0;                        /* sits just below the header at scroll */
-  z-index: 49;
-  width: 100%;
-  height: 6px;
-  background-color: var(--brand-yellow);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-  flex-shrink: 0;
-}
-
-/* ─── User info banner (injected by custom.js) ──────────────── */
-#cl-user-banner {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--brand-white) !important;
-  margin-left: auto;
-  margin-right: 8px;
-  white-space: nowrap;
-  cursor: pointer;
-  opacity: 0.95;
-}
-#cl-user-banner:hover { opacity: 1; }
-
-/* ─── Buttons — all red with white text ─────────────────────── */
-button,
-[role="button"],
-.cl-button,
-[class*="Button"],
-[class*="button"]:not([class*="icon"]) {
-  background-color: var(--brand-red) !important;
-  color: var(--brand-white) !important;
-  border-color: var(--brand-red) !important;
-}
-
-button:hover,
-[role="button"]:hover {
-  background-color: var(--brand-red-dark) !important;
-  border-color: var(--brand-red-dark) !important;
-}
-
-/* Outline / ghost buttons */
-button[variant="outline"],
-button[class*="outline"],
-button[class*="ghost"] {
-  background-color: transparent !important;
-  color: var(--brand-red) !important;
-  border: 1.5px solid var(--brand-red) !important;
-}
-button[variant="outline"]:hover,
-button[class*="outline"]:hover,
-button[class*="ghost"]:hover {
-  background-color: var(--brand-red) !important;
-  color: var(--brand-white) !important;
-}
-
-/* Send / submit button in the chat input */
-[data-testid="send-button"],
-button[aria-label*="send" i] {
-  background-color: var(--brand-red) !important;
-  color: var(--brand-white) !important;
-}
-
-/* ─── Chat input area ────────────────────────────────────────── */
-[class*="input"],
-[class*="Input"],
-textarea,
-input[type="text"],
-input[type="number"] {
-  background-color: var(--brand-white) !important;
-  border-color: var(--brand-border) !important;
-  color: var(--brand-text) !important;
-}
-
-[class*="input"]:focus,
-textarea:focus,
-input:focus {
-  border-color: var(--brand-red) !important;
-  outline-color: var(--brand-red) !important;
-  box-shadow: 0 0 0 2px rgba(204, 0, 0, 0.15) !important;
-}
-
-/* ─── Scrollbar ──────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--brand-off-white); }
-::-webkit-scrollbar-thumb {
-  background: var(--brand-red);
-  border-radius: 3px;
-}
-
-/* ─── Chat messages — white bubbles ─────────────────────────── */
-[class*="message"],
-[class*="Message"] {
-  background-color: var(--brand-white) !important;
-  border-color: var(--brand-border) !important;
-}
-
-/* User message chip — light red tint */
-[data-testid*="user-message"],
-[class*="user"][class*="message"] {
-  background-color: #FFF0F0 !important;
-  border-left: 3px solid var(--brand-red) !important;
-}
-
-/* ─── Sidebar ────────────────────────────────────────────────── */
-aside,
-[class*="sidebar"],
-[class*="Sidebar"] {
-  background-color: var(--brand-off-white) !important;
-  border-right: 1px solid var(--brand-border) !important;
-}
-
-/* ─── Steps / tool calls ─────────────────────────────────────── */
-[class*="step"],
-[class*="Step"] {
-  border-left: 3px solid var(--brand-red) !important;
-  background-color: #FFF8F8 !important;
-}
-
-/* ─── Chainlit watermark — hide ─────────────────────────────── */
-a[href*="chainlit.io"],
-[class*="watermark"],
-[class*="powered"] {
+/* ─── Hide Readme button in Chainlit's native header ─────── */
+a[href*="readme" i],
+button[aria-label*="readme" i],
+#header a {
   display: none !important;
+}
+
+/* ─── Tooltips & popovers above our custom red bar ──────────
+   Our #cl-header-bar is z-index:99999. Radix UI renders
+   tooltips/popovers in a body-level portal at z-index ~50,
+   putting them behind our bar. This raises them above it.   */
+[data-radix-popper-content-wrapper],
+[role="tooltip"],
+[data-state="delayed-open"],
+[data-state="instant-open"] {
+  z-index: 200000 !important;
+}
+
+/* ─── 2. Send button — red ────────────────────────────────── */
+#chat-submit {
+  background-color: #CC0000 !important;
+  color: #FFFFFF !important;
+}
+
+#chat-submit:hover {
+  background-color: #A30000 !important;
+}
+
+/* ─── 3. Layout fix for 54px injected header ─────────────────
+   Problem (confirmed via live DOM inspection):
+     - #root > div:first-child has Tailwind class min-h-svh
+       which forces min-height: 100svh (961px) — overrides height: calc(100vh-54px)
+     - margin-top on the child collapses through #root (no border/overflow)
+       so #root itself shifts 54px — but stays 961px tall, ending at 1015px
+     - Result: 54px of the bottom (the input box) falls outside the viewport
+
+   Fix (three-rule cascade):
+     body    → clip at 100svh so nothing can scroll past the viewport
+     #root   → overflow:hidden prevents margin-collapse; height:calc(100svh-51px)
+               + margin-top:51px positions it correctly within body
+     #root > div:first-child → override min-h-svh to 0, fill parent (100%)  */
+
+body {
+  overflow: hidden !important;
+  height: 100svh !important;
+  /* anchor the clip boundary */
+}
+
+#root {
+  overflow: hidden !important;
+  /* prevents margin-collapse from child */
+  margin-top: 51px !important;
+  /* shift down past our 51px bars (48 red + 3 yellow) */
+  height: calc(100svh - 51px) !important;
+  /* shrink to remaining space */
+}
+
+/* Level 1 — has Tailwind min-h-svh class */
+#root>div:first-child {
+  min-height: 0 !important;
+  /* override min-h-svh (Tailwind class) */
+  height: 100% !important;
+  /* fill #root exactly */
+}
+
+/* Level 2 — has Tailwind h-screen class (also forces 100vh) */
+#root>div:first-child>div:first-child {
+  min-height: 0 !important;
+  /* override h-screen */
+  height: 100% !important;
 }
