@@ -45,7 +45,7 @@
 
     header.innerHTML = `
     <span style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;letter-spacing:0.2px;">
-      🖥️ Platform Assistant
+      ✨ Platform Assistant
     </span>
     <span id="cl-user-info"
           style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;opacity:0.95;cursor:pointer;"
@@ -88,5 +88,27 @@
     // Try immediately (body usually exists when custom_js runs)
     if (!inject()) {
         document.addEventListener("DOMContentLoaded", inject);
+    }
+
+    /* ── 4. Emoji favicon —  ✨ (codename: Ignite) ─────────────────
+       SVG favicon with the emoji. Set once after DOM is ready.
+       No MutationObserver — comparing link.href (browser-resolved)
+       against the raw data URL string never matches and causes
+       an infinite loop. One-shot is sufficient.                    */
+    const FAVICON_SVG = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>";
+
+    function setFavicon() {
+        document.querySelectorAll("link[rel*='icon']").forEach(function (el) { el.remove(); });
+        var link = document.createElement("link");
+        link.rel = "icon";
+        link.type = "image/svg+xml";
+        link.href = FAVICON_SVG;
+        document.head.appendChild(link);
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", setFavicon);
+    } else {
+        setFavicon();
     }
 })();
