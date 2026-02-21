@@ -47,18 +47,18 @@ export default function DynamicForm() {
     // ── Styles ──────────────────────────────────────────────────────────────
     const colors = {
         bg: "#FFFFFF",
-        bgCard: "#FFF5F5",
+        bgCard: "#F9FAFB",
         border: "#E5E7EB",
-        borderFocus: "#CC0000",
-        text: "#1A1A1A",
+        borderFocus: "#6366F1",
+        text: "#111827",
         textMuted: "#6B7280",
         textLabel: "#374151",
-        error: "#CC0000",
-        accent: "#CC0000",
+        error: "#EF4444",
+        accent: "#CC0000",       /* red — matches global button override */
         accentHover: "#A30000",
         accentText: "#FFFFFF",
-        badgeBg: "#FFEAEA",
-        badgeText: "#CC0000",
+        badgeBg: "#EFF6FF",
+        badgeText: "#1D4ED8",
     };
 
     const inputBase = (hasError) => ({
@@ -323,7 +323,7 @@ export default function DynamicForm() {
                     onMouseOver={(e) => { if (!submitting) e.currentTarget.style.background = colors.accentHover; }}
                     onMouseOut={(e) => { if (!submitting) e.currentTarget.style.background = colors.accent; }}
                 >
-                    {submitting ? "⏳ Submitting…" : "✅ Submit"}
+                    {submitting ? "Submitting…" : "Submit"}
                 </button>
             </div>
         </div>
